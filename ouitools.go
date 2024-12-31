@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"regexp"
@@ -62,12 +63,13 @@ type HardwareAddr net.HardwareAddr
 
 // ParseMAC parses s as an IEEE 802 MAC-48, EUI-48, or EUI-64 using one of the
 // following formats:
-//   01:23:45:67:89:ab
-//   01:23:45:67:89:ab:cd:ef
-//   01-23-45-67-89-ab
-//   01-23-45-67-89-ab-cd-ef
-//   0123.4567.89ab
-//   0123.4567.89ab.cdef
+//
+//	01:23:45:67:89:ab
+//	01:23:45:67:89:ab:cd:ef
+//	01-23-45-67-89-ab
+//	01-23-45-67-89-ab-cd-ef
+//	0123.4567.89ab
+//	0123.4567.89ab.cdef
 func ParseOUI(s string, size int) (hw HardwareAddr, err error) {
 	if s[2] == ':' || s[2] == '-' {
 		if (len(s)+1)%3 != 0 {
@@ -129,6 +131,14 @@ func New(file string) *OuiDb {
 	}
 	return db
 }
+func NewByte(b []byte) *OuiDb {
+	db := &OuiDb{}
+	r := bytes.NewReader(b)
+	if err := db.readByte(r); err != nil {
+		return nil
+	}
+	return db
+}
 
 // Lookup finds the OUI the address belongs to
 func (m *OuiDb) Lookup(address HardwareAddr) *AddressBlock {
@@ -166,14 +176,20 @@ func byteIndex(s string, c byte) int {
 func (m *OuiDb) Load(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return (err)
+		return err
 	}
-
-	fieldsRe := regexp.MustCompile(`^(\S+)\t+(\S+)(\s+#\s+(\S.*))?`)
-
-	re := regexp.MustCompile(`((?:(?:[0-9a-zA-Z]{2})[-:]){2,5}(?:[0-9a-zA-Z]{2}))(?:/(\w{1,2}))?`)
-
 	scanner := bufio.NewScanner(file)
+	return m.scan(scanner)
+}
+
+func (m *OuiDb) readByte(r io.Reader) error {
+	scanner := bufio.NewScanner(r)
+	return m.scan(scanner)
+}
+
+func (m *OuiDb) scan(scanner *bufio.Scanner) error {
+	fieldsRe := regexp.MustCompile(`^(\S+)\t+(\S+)(\s+#\s+(\S.*))?`)
+	re := regexp.MustCompile(`((?:(?:[0-9a-zA-Z]{2})[-:]){2,5}(?:[0-9a-zA-Z]{2}))(?:/(\w{1,2}))?`)
 	for scanner.Scan() {
 		text := scanner.Text()
 		if text == "" || text[0] == '#' || text[0] == '\t' {
@@ -200,13 +216,12 @@ func (m *OuiDb) Load(path string) error {
 		s := matches[0][1]
 
 		i := byteIndex(s, '/')
-
 		if i == -1 {
-			block.Oui, err = ParseOUI(s, 6)
+			block.Oui, _ = ParseOUI(s, 6)
 			block.Mask = 24 // len(block.Oui) * 8
 		} else {
-			block.Oui, err = ParseOUI(s[:i], 6)
-			block.Mask, err = strconv.Atoi(s[i+1:])
+			block.Oui, _ = ParseOUI(s[:i], 6)
+			block.Mask, _ = strconv.Atoi(s[i+1:])
 		}
 
 		//fmt.Println("OUI:", block.Oui, block.Mask, err)
@@ -225,7 +240,6 @@ func (m *OuiDb) Load(path string) error {
 	if err := scanner.Err(); err != nil {
 		return (err)
 	}
-
 	return (nil)
 }
 
