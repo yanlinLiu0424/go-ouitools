@@ -2,15 +2,33 @@
 package ouidb
 
 import (
+	"os"
 	"testing"
 )
 
 var db *OuiDb
 
 func lookup(t *testing.T, mac, org string) {
+	TestInitialization(t)
 	if db == nil {
 		t.Fatal("database not initialized")
 	}
+	v, err := db.VendorLookup(mac)
+	if err != nil {
+		t.Fatalf("parse: %s: %s", mac, err.Error())
+	}
+	if v != org {
+		t.Fatalf("lookup: input %s, expect %s, got %s", mac, org, v)
+	}
+	t.Logf("%s => %s\n", mac, v)
+}
+
+func lookFs(t *testing.T, mac, org string) {
+	b, err := os.ReadFile("oui.txt")
+	if err != nil {
+		t.Fatalf("read file: %s", err.Error())
+	}
+	db := NewByte(b)
 	v, err := db.VendorLookup(mac)
 	if err != nil {
 		t.Fatalf("parse: %s: %s", mac, err.Error())
@@ -52,4 +70,8 @@ func TestLookup2(t *testing.T) {
 
 func TestLookup3(t *testing.T) {
 	lookup(t, "00:16:e0:3d:f4:4c", "3Com Ltd")
+}
+
+func TestRead(t *testing.T) {
+	lookFs(t, "00:16:e0:3d:f4:4c", "3Com Ltd")
 }
